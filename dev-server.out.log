@@ -1,0 +1,22 @@
+
+> crms@0.1.0 dev
+> next dev --hostname 127.0.0.1 --port 3000
+
+▲ Next.js 16.2.4 (Turbopack)
+- Local:         http://127.0.0.1:3000
+- Network:       http://127.0.0.1:3000
+✓ Ready in 3.9s
+
+ GET /dashboard 200 in 2.3s (next.js: 1557ms, application-code: 787ms)
+ GET /assets 200 in 403ms (next.js: 83ms, application-code: 321ms)
+ GET /assets/sets 200 in 447ms (next.js: 144ms, application-code: 303ms)
+ GET /assets/locations 200 in 353ms (next.js: 146ms, application-code: 207ms)
+ GET /rentals 200 in 338ms (next.js: 98ms, application-code: 241ms)
+ GET /rentals/apply 200 in 503ms (next.js: 144ms, application-code: 359ms)
+ GET /requests/costume 200 in 360ms (next.js: 129ms, application-code: 231ms)
+ GET /requests/education 200 in 493ms (next.js: 153ms, application-code: 341ms)
+ GET /work 200 in 317ms (next.js: 112ms, application-code: 205ms)
+ GET /stats 200 in 333ms (next.js: 117ms, application-code: 216ms)
+ GET /archive 200 in 441ms (next.js: 223ms, application-code: 218ms)
+ GET /vendors 200 in 622ms (next.js: 189ms, application-code: 433ms)
+ GET /org 200 in 307ms (next.js: 122ms, application-code: 185ms)
