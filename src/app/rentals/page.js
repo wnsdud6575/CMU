@@ -26,13 +26,55 @@ function createInitialReturnData(rental) {
   };
 }
 
+// 💡 출고 D-day별 칸반 카드 스타일 정의 헬퍼 함수 (D-0, D-1, D-2, D-3 색상 차별화)
+function getKanbanDdayStyles(diff) {
+  if (diff === 0) {
+    return {
+      borderLeft: '4px solid #ef4444',
+      background: 'linear-gradient(135deg, #fff5f5 0%, #ffe3e3 100%)',
+      badgeClass: 'badge-danger',
+      badgeIcon: '🚨 ',
+      border: '1px solid #fca5a5'
+    };
+  } else if (diff === 1) {
+    return {
+      borderLeft: '4px solid #f97316',
+      background: 'linear-gradient(135deg, #fffbeb 0%, #ffedd5 100%)',
+      badgeClass: 'badge-warning',
+      badgeIcon: '⚡ ',
+      border: '1px solid #fed7aa'
+    };
+  } else if (diff === 2) {
+    return {
+      borderLeft: '4px solid #eab308',
+      background: 'linear-gradient(135deg, #fefce8 0%, #fef9c3 100%)',
+      badgeClass: 'badge-warning',
+      badgeIcon: '📅 ',
+      border: '1px solid #fef08a'
+    };
+  } else if (diff === 3) {
+    return {
+      borderLeft: '4px solid #10b981',
+      background: 'linear-gradient(135deg, #f0fdf4 0%, #e8f5e9 100%)',
+      badgeClass: 'badge-success',
+      badgeIcon: '📅 ',
+      border: '1px solid #c8e6c9'
+    };
+  }
+  return {
+    borderLeft: '1px solid var(--border)',
+    background: '#fff',
+    border: '1px solid var(--border)'
+  };
+}
+
 export default function RentalsKanban() {
   const { rentals, updateRentalStatus, updateRental } = useApp();
   const [selectedRental, setSelectedRental] = useState(null);
   const [returnData, setReturnData] = useState(null);
   const [draggedItem, setDraggedItem] = useState(null);
 
-  const today = '2026-04-29';
+  const today = new Date().toLocaleDateString('sv-SE');
   const processedRentals = rentals.map(r => {
     if (!r.pickupDate) return { ...r, diff: 999, dTag: null, priorityScore: 5 };
     const rDate = new Date(r.pickupDate);
@@ -124,35 +166,75 @@ export default function RentalsKanban() {
               </div>
 
               <div className="kanban-cards">
-                {columnRentals.map(rental => (
-                  <div
-                    key={rental.id}
-                    className={`kanban-card ${rental.overdue ? 'overdue' : ''}`}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, rental.id)}
-                    onClick={() => openRental(rental)}
-                    style={{
-                      borderLeft: rental.diff === 0 ? '4px solid var(--danger)' : rental.diff === 1 ? '4px solid var(--warning)' : undefined,
-                      background: rental.diff === 0 ? '#fff5f5' : rental.diff === 1 ? '#fffbeb' : undefined
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <div className="kanban-card-id">ID #{rental.id}</div>
-                      {rental.dTag && (
-                        <span className={`badge ${rental.diff === 0 ? 'badge-danger' : rental.diff === 1 ? 'badge-warning' : 'badge-info'}`} style={{ fontSize: 9, padding: '2px 5px' }}>
-                          {rental.diff === 0 ? '🚨 ' : rental.diff === 1 ? '⚡ ' : ''}{rental.dTag}
-                        </span>
+                {columnRentals.map(rental => {
+                  const isUrgent = rental.diff <= 3;
+                  const dStyles = isUrgent ? getKanbanDdayStyles(rental.diff) : null;
+                  return (
+                    <div
+                      key={rental.id}
+                      className={`kanban-card ${rental.overdue ? 'overdue' : ''}`}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, rental.id)}
+                      onClick={() => openRental(rental)}
+                      style={isUrgent ? {
+                        borderLeft: dStyles.borderLeft,
+                        background: dStyles.background,
+                        border: dStyles.border
+                      } : undefined}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <div style={{ fontWeight: 800, fontSize: '13px', color: 'var(--text)', marginRight: '6px', wordBreak: 'break-all' }}>
+                          {rental.department}
+                        </div>
+                        {rental.dTag && (
+                          <span className={`badge ${isUrgent ? dStyles.badgeClass : (rental.diff === 0 ? 'badge-danger' : rental.diff === 1 ? 'badge-warning' : 'badge-info')}`} style={{ fontSize: '9px', padding: '2px 5px', flexShrink: 0, borderRadius: '4px' }}>
+                            {isUrgent ? dStyles.badgeIcon : (rental.diff === 0 ? '🚨 ' : rental.diff === 1 ? '⚡ ' : '')}{rental.dTag}
+                          </span>
+                        )}
+                      </div>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6 }}>
+                      <span style={{ fontWeight: 600, background: 'rgba(99, 102, 241, 0.1)', color: '#4f46e5', padding: '1px 5px', borderRadius: '3px', fontSize: '10px' }}>
+                        {rental.requester}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px', borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
+                      {(rental.lines && rental.lines.length > 0) ? (
+                        rental.lines.map((line, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', lineHeight: '1.4' }}>
+                            <span style={{ color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '160px' }} title={`${line.name}${line.size ? `(${line.size})` : ''}`}>
+                              {line.name}{line.size ? `(${line.size})` : ''}
+                            </span>
+                            <span style={{ color: 'var(--text)', fontWeight: 700, flexShrink: 0 }}>
+                              {line.quantity}개
+                            </span>
+                          </div>
+                        ))
+                      ) : (
+                        (rental.items || '').split(',').map((itemText, i) => {
+                          const trimmed = itemText.trim();
+                          if (!trimmed) return null;
+                          const match = trimmed.match(/(.*?)\s*(\d+개)$/);
+                          const name = match ? match[1] : trimmed;
+                          const qty = match ? match[2] : '';
+                          return (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', lineHeight: '1.4' }}>
+                              <span style={{ color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '160px' }}>{name}</span>
+                              <span style={{ color: 'var(--text)', fontWeight: 700, flexShrink: 0 }}>{qty}</span>
+                            </div>
+                          );
+                        })
                       )}
                     </div>
-                    <div className="kanban-card-title">{rental.department}</div>
-                    <div className="kanban-card-desc">{rental.requester} · {rental.items}</div>
 
-                    <div className="kanban-card-footer" style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-muted)' }}>
+                    <div className="kanban-card-footer" style={{ marginTop: 'auto', borderTop: '1px solid #f1f5f9', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
                       <span>출고 {rental.pickupDate?.slice(5) || '-'}</span>
-                      {rental.overdue ? <span style={{ color: 'var(--danger)', fontWeight: 700 }}>지연</span> : <span>반납 {rental.returnDueDate?.slice(5) || '-'}</span>}
+                      {rental.overdue ? <span style={{ color: 'var(--danger)', fontWeight: 800 }}>지연 🚨</span> : <span>반납 {rental.returnDueDate?.slice(5) || '-'}</span>}
                     </div>
                   </div>
-                ))}
+                );
+              })}
               </div>
             </div>
           );

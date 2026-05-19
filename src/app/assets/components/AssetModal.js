@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useApp, CATEGORIES, LOCATIONS, LAUNDRY_METHODS } from '../../context/AppContext';
 import AssetPhoto from '../../components/AssetPhoto';
+import { uploadItemPhoto } from '@/lib/supabaseClient';
 
 const CATEGORY_DEFAULTS = {
   Z: { ageGroup: null, subType: 'accessory' },
@@ -17,6 +18,9 @@ function buildLocalCode(data) {
 
 export default function AssetModal({ onClose, editItem = null }) {
   const { addItem, updateItem } = useApp();
+
+  const [activePasteIndex, setActivePasteIndex] = useState(null);
+  const [uploadingIdx, setUploadingIdx] = useState(null);
 
   const [formData, setFormData] = useState(editItem || {
     name: '',
@@ -43,16 +47,34 @@ export default function AssetModal({ onClose, editItem = null }) {
     sizes: editItem?.sizes || [], // Structured sizes
   });
 
-  const [step, setStep] = useState(1);
+  const updateSizeData = (newSizes, category) => {
+    const totalQty = newSizes.reduce((sum, s) => sum + (parseInt(s.qty, 10) || 0), 0);
+    const unit = (category === 'Z' || category === 'H') ? '개' : '벌';
+    const breakdownStr = newSizes
+      .filter(s => s.size)
+      .map(s => `${s.size} ${s.qty}${unit}`)
+      .join(' / ');
+    return {
+      sizes: newSizes,
+      quantity: totalQty,
+      sizeBreakdown: breakdownStr
+    };
+  };
 
   const handleCatSelect = (cat) => {
     const defaults = CATEGORY_DEFAULTS[cat] || { ageGroup: 'adult', subType: 'top' };
-    setFormData(prev => ({
-      ...prev,
-      category: cat,
-      costumeLine: CATEGORIES[cat]?.name || prev.costumeLine,
-      ...defaults,
-    }));
+    setFormData(prev => {
+      const updated = {
+        ...prev,
+        category: cat,
+        costumeLine: CATEGORIES[cat]?.name || prev.costumeLine,
+        ...defaults,
+      };
+      return {
+        ...updated,
+        ...updateSizeData(prev.sizes || [], cat)
+      };
+    });
   };
 
   const handleChange = (e) => {
@@ -63,7 +85,7 @@ export default function AssetModal({ onClose, editItem = null }) {
   const handleAddSize = () => {
     setFormData(prev => ({
       ...prev,
-      sizes: [...(prev.sizes || []), { size: '', qty: 0 }]
+      sizes: [...(prev.sizes || []), { size: '', qty: 0, photo: null }]
     }));
   };
 
@@ -71,7 +93,10 @@ export default function AssetModal({ onClose, editItem = null }) {
     setFormData(prev => {
       const newSizes = [...prev.sizes];
       newSizes.splice(index, 1);
-      return { ...prev, sizes: newSizes };
+      return { 
+        ...prev, 
+        ...updateSizeData(newSizes, prev.category)
+      };
     });
   };
 
@@ -79,32 +104,82 @@ export default function AssetModal({ onClose, editItem = null }) {
     setFormData(prev => {
       const newSizes = [...prev.sizes];
       newSizes[index] = { ...newSizes[index], [field]: value };
-      
-      // Auto-update total quantity and sizeBreakdown string
-      const totalQty = newSizes.reduce((sum, s) => sum + (parseInt(s.qty, 10) || 0), 0);
-      const breakdownStr = newSizes
-        .filter(s => s.size)
-        .map(s => `${s.size} ${s.qty}벌`)
-        .join(' / ');
-
       return { 
         ...prev, 
-        sizes: newSizes, 
-        quantity: totalQty,
-        sizeBreakdown: breakdownStr
+        ...updateSizeData(newSizes, prev.category)
       };
     });
   };
 
-  const handlePhotoChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const [isUploading, setIsUploading] = useState(false);
 
+  const handleFileUpload = async (file) => {
+    if (!file || !file.type.startsWith('image/')) return;
+
+    // 1. 로컬 미리보기 (즉각적인 피드백)
     const reader = new FileReader();
     reader.onload = () => {
       setFormData(prev => ({ ...prev, photo: reader.result }));
     };
     reader.readAsDataURL(file);
+
+    // 2. Supabase Storage 실제 업로드
+    try {
+      setIsUploading(true);
+      const publicUrl = await uploadItemPhoto(file);
+      if (publicUrl) {
+        setFormData(prev => ({ ...prev, photo: publicUrl }));
+      }
+    } catch (err) {
+      alert('사진 업로드에 실패했습니다. Storage 버킷 설정(Public)을 확인해주세요.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handlePhotoChange = (e) => {
+    handleFileUpload(e.target.files?.[0]);
+  };
+
+  const handlePaste = async (e) => {
+    if (!e.clipboardData || !e.clipboardData.items) return;
+
+    // 텍스트 입력창에서 텍스트를 정상 붙여넣기하는 경우 차단 방지 (단, 규격 사진 붙여넣기 모드가 활성화된 경우는 허용)
+    if (activePasteIndex === null) {
+      if (e.target && e.target.tagName === 'INPUT' && e.target.type !== 'file') return;
+      if (e.target && e.target.tagName === 'TEXTAREA') return;
+    }
+
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item && item.type && item.type.indexOf('image') !== -1) {
+        const file = item.getAsFile();
+        if (!file) continue;
+        
+        const newFile = new File([file], `paste_${Date.now()}.png`, { type: file.type });
+        e.preventDefault();
+        
+        if (activePasteIndex !== null) {
+          const idx = activePasteIndex;
+          try {
+            setUploadingIdx(idx);
+            const url = await uploadItemPhoto(newFile);
+            if (url) {
+              handleSizeChange(idx, 'photo', url);
+            }
+          } catch (err) {
+            alert('개별 사진 붙여넣기 업로드 실패: ' + err.message);
+          } finally {
+            setUploadingIdx(null);
+            setActivePasteIndex(null); // 붙여넣기 후 해제
+          }
+        } else {
+          handleFileUpload(newFile);
+        }
+        break;
+      }
+    }
   };
 
   const handleSubmit = () => {
@@ -132,7 +207,7 @@ export default function AssetModal({ onClose, editItem = null }) {
   const ageSubOptions = formData.ageGroup ? subOptions[formData.ageGroup] || {} : subOptions;
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" onPaste={handlePaste}>
       <div className="modal" style={{ maxWidth: '780px' }}>
         <div className="modal-header">
           <h2 className="modal-title">{editItem ? '자산 정보 수정' : '신규 자산 등록'}</h2>
@@ -140,76 +215,57 @@ export default function AssetModal({ onClose, editItem = null }) {
         </div>
 
         <div className="modal-body">
-          {step === 1 && (
-            <div>
-              <h3 className="form-label" style={{ fontSize: '15px', marginBottom: '16px' }}>1. 대분류 선택</h3>
-              <div className="category-grid">
-                {Object.values(CATEGORIES).map(cat => (
-                  <div
-                    key={cat.code}
-                    className={`category-card ${formData.category === cat.code ? 'selected' : ''}`}
-                    onClick={() => handleCatSelect(cat.code)}
-                  >
-                    <div className="category-card-code">{cat.code}</div>
-                    <div>{cat.name}</div>
+          <div style={{ padding: '16px', background: 'var(--bg-main)', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '24px' }}>
+            <h3 className="form-label" style={{ fontSize: '14px', marginBottom: '12px', color: 'var(--primary-dark)' }}>분류 체계</h3>
+            <div className="category-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(65px, 1fr))', gap: '8px' }}>
+              {Object.values(CATEGORIES).map(cat => (
+                <div
+                  key={cat.code}
+                  className={`category-card ${formData.category === cat.code ? 'selected' : ''}`}
+                  onClick={() => handleCatSelect(cat.code)}
+                  style={{ padding: '8px', fontSize: '11px', minHeight: '50px' }}
+                >
+                  <div className="category-card-code" style={{ marginBottom: '2px', fontSize: '10px' }}>{cat.code}</div>
+                  <div>{cat.name}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '16px' }}>
+              <label className="form-label">연령 및 품목 구분</label>
+
+              {formData.category !== 'Z' && formData.category !== 'H' && (
+                <div className="grid-2">
+                  <div className="tabs compact-tabs">
+                    <button type="button" className={`tab ${formData.ageGroup === 'adult' ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, ageGroup: 'adult', subType: 'top' }))}>성인</button>
+                    <button type="button" className={`tab ${formData.ageGroup === 'child' ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, ageGroup: 'child', subType: 'top' }))}>아동</button>
                   </div>
-                ))}
-              </div>
-
-              <div style={{ marginTop: '24px' }}>
-                <h3 className="form-label" style={{ fontSize: '15px', marginBottom: '16px' }}>2. 연령 및 품목 구분</h3>
-
-                {formData.category !== 'Z' && formData.category !== 'H' && (
-                  <div className="grid-2">
-                    <div>
-                      <div className="form-label">연령대</div>
-                      <div className="tabs compact-tabs">
-                        <button type="button" className={`tab ${formData.ageGroup === 'adult' ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, ageGroup: 'adult', subType: 'top' }))}>성인</button>
-                        <button type="button" className={`tab ${formData.ageGroup === 'child' ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, ageGroup: 'child', subType: 'top' }))}>아동</button>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="form-label">구분</div>
-                      <div className="tabs compact-tabs">
-                        {Object.entries(ageSubOptions).map(([value, label]) => (
-                          <button type="button" key={value} className={`tab ${formData.subType === value ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, subType: value }))}>{label.replace(/^성인 |^아동 /, '')}</button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {(formData.category === 'Z' || formData.category === 'H') && (
                   <div className="tabs compact-tabs">
                     {Object.entries(ageSubOptions).map(([value, label]) => (
-                      <button type="button" key={value} className={`tab ${formData.subType === value ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, subType: value }))}>{label}</button>
+                      <button type="button" key={value} className={`tab ${formData.subType === value ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, subType: value }))}>{label.replace(/^성인 |^아동 /, '')}</button>
                     ))}
                   </div>
-                )}
-              </div>
-            </div>
-          )}
+                </div>
+              )}
 
-          {step === 2 && (
-            <div>
+              {(formData.category === 'Z' || formData.category === 'H') && (
+                <div className="tabs compact-tabs">
+                  {Object.entries(ageSubOptions).map(([value, label]) => (
+                    <button type="button" key={value} className={`tab ${formData.subType === value ? 'active' : ''}`} onClick={() => setFormData(prev => ({ ...prev, subType: value }))}>{label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
               <div className="asset-modal-photo-row">
                 <AssetPhoto item={formData} size="lg" />
                 <div style={{ flex: 1 }}>
                   <div className="form-group">
-                    <label className="form-label">대표 사진</label>
-                    <input type="file" className="form-input" accept="image/*" onChange={handlePhotoChange} />
-                    <div className="muted-line">브라우저 시연용으로 바로 미리보기됩니다. 실제 영구 저장은 DB/파일 저장소 연결 시 붙이면 됩니다.</div>
+                    <label className="form-label">대표 사진 {isUploading && <span style={{color: 'var(--primary)', fontSize: 11}}>(업로드 중...)</span>}</label>
+                    <input type="file" className="form-input" accept="image/*" onChange={handlePhotoChange} disabled={isUploading} />
+                    <div className="muted-line">💡 <b>꿀팁:</b> 아무 곳에서나 화면 캡처 후 창 안에서 <b>Ctrl+V (붙여넣기)</b> 하셔도 바로 업로드됩니다!</div>
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">사진 미등록 시 표시 색상</label>
-                    <select className="form-select" name="photoTone" value={formData.photoTone} onChange={handleChange}>
-                      <option value="linear-gradient(135deg, #e0f2fe, #ccfbf1)">청록</option>
-                      <option value="linear-gradient(135deg, #fef3c7, #fde68a)">금색</option>
-                      <option value="linear-gradient(135deg, #fee2e2, #fecaca)">분홍</option>
-                      <option value="linear-gradient(135deg, #cbd5e1, #64748b)">회색</option>
-                      <option value="linear-gradient(135deg, #27272a, #0f172a)">검정</option>
-                    </select>
-                  </div>
+
                 </div>
               </div>
 
@@ -260,6 +316,9 @@ export default function AssetModal({ onClose, editItem = null }) {
                   <span>사이즈별 세부 수량</span>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={handleAddSize} style={{ padding: '2px 8px', fontSize: '11px' }}>+ 사이즈 추가</button>
                 </label>
+                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '8px', lineHeight: '1.4' }}>
+                  💡 <b>개별 사진 등록 팁:</b> 📎 <b>사진 첨부</b> 버튼을 누르면 파일 탐색기가 즉시 열립니다. 복사한 이미지는 버튼을 <b>1번 클릭</b>한 상태에서 <b>Ctrl+V</b>로 바로 붙여넣어 등록할 수도 있습니다.
+                </div>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-main)', padding: '12px', borderRadius: 'var(--radius-sm)', marginBottom: '8px' }}>
                   {(!formData.sizes || formData.sizes.length === 0) ? (
@@ -268,24 +327,114 @@ export default function AssetModal({ onClose, editItem = null }) {
                     </div>
                   ) : (
                     formData.sizes.map((s, idx) => (
-                      <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center', background: 'var(--bg-main)', padding: '6px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                        {/* 💡 규격별 개별 파일 첨부 및 복사 붙여넣기 듀얼 입력 버튼 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                          <button 
+                            type="button" 
+                            className="btn btn-secondary btn-sm"
+                            style={{
+                              padding: '5px 10px',
+                              fontSize: '12px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              border: activePasteIndex === idx ? '1px solid var(--primary)' : '1px solid var(--border)',
+                              boxShadow: activePasteIndex === idx ? '0 0 0 2px rgba(67, 56, 202, 0.2)' : 'none',
+                              color: activePasteIndex === idx ? 'var(--primary-dark)' : 'var(--text-main)',
+                              fontWeight: activePasteIndex === idx ? '600' : 'normal',
+                              background: activePasteIndex === idx ? 'var(--bg-main)' : 'var(--bg-dark)',
+                              transition: 'all 0.15s ease'
+                            }}
+                            title="클릭: 파일 첨부 창 열기 및 Ctrl+V 붙여넣기 활성화"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActivePasteIndex(prev => prev === idx ? null : idx);
+                              document.getElementById(`size-file-${idx}`).click();
+                            }}
+                          >
+                            <span>📎</span>
+                            <span>
+                              {uploadingIdx === idx ? '업로드 중...' : s.photo ? (activePasteIndex === idx ? 'Ctrl+V 대기...' : '변경') : (activePasteIndex === idx ? 'Ctrl+V 대기...' : '사진 첨부')}
+                            </span>
+                          </button>
+
+                          {s.photo && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <a 
+                                href={s.photo} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                style={{ 
+                                  display: 'flex',
+                                  width: '32px',
+                                  height: '32px',
+                                  borderRadius: '4px',
+                                  overflow: 'hidden',
+                                  border: '1px solid var(--border)',
+                                  background: `url(${s.photo}) center/cover no-repeat`
+                                }}
+                                title="등록된 사진 크게 보기"
+                              />
+                              <button
+                                type="button"
+                                style={{
+                                  fontSize: '11px',
+                                  color: 'var(--danger)',
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline',
+                                  padding: '2px',
+                                  whiteSpace: 'nowrap'
+                                }}
+                                onClick={() => handleSizeChange(idx, 'photo', null)}
+                                title="개별 사진 제거"
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          )}
+
+                          <input 
+                            type="file" 
+                            id={`size-file-${idx}`} 
+                            style={{ display: 'none' }} 
+                            accept="image/*"
+                            onChange={async (e) => {
+                              const file = e.target.files[0];
+                              if (!file) return;
+                              try {
+                                setUploadingIdx(idx);
+                                const url = await uploadItemPhoto(file);
+                                handleSizeChange(idx, 'photo', url);
+                              } catch (err) {
+                                alert('개별 사진 업로드 실패: ' + err.message);
+                              } finally {
+                                setUploadingIdx(null);
+                                setActivePasteIndex(null);
+                              }
+                            }}
+                          />
+                        </div>
+
                         <input 
                           type="text" 
                           className="form-input" 
-                          style={{ flex: 2, padding: '6px 10px', fontSize: '13px' }} 
-                          placeholder="사이즈 (예: S, 95, Free)" 
+                          style={{ flex: 2, padding: '4px 8px', fontSize: '13px' }} 
+                          placeholder="규격/색상 (예: 화이트, 95)" 
                           value={s.size}
                           onChange={e => handleSizeChange(idx, 'size', e.target.value)}
                         />
                         <input 
                           type="number" 
                           className="form-input" 
-                          style={{ flex: 1, padding: '6px 10px', fontSize: '13px' }} 
+                          style={{ width: '80px', padding: '4px 8px', fontSize: '13px' }} 
                           placeholder="수량" 
                           value={s.qty}
                           onChange={e => handleSizeChange(idx, 'qty', e.target.value)}
                         />
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleRemoveSize(idx)} style={{ color: 'var(--danger)', border: 'none' }}>×</button>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleRemoveSize(idx)} style={{ color: 'var(--danger)', border: 'none', padding: '2px 6px' }}>×</button>
                       </div>
                     ))
                   )}
@@ -347,22 +496,11 @@ export default function AssetModal({ onClose, editItem = null }) {
                 <label className="form-label">수선/관리 메모</label>
                 <textarea className="form-textarea" name="repairNote" value={formData.repairNote || ''} onChange={handleChange} placeholder="예: 단추 교체 필요, 이염 주의 등"></textarea>
               </div>
-            </div>
-          )}
         </div>
 
         <div className="modal-footer">
-          {step === 1 ? (
-            <>
-              <button className="btn btn-secondary" onClick={onClose}>취소</button>
-              <button className="btn btn-primary" onClick={() => setStep(2)}>다음 단계</button>
-            </>
-          ) : (
-            <>
-              <button className="btn btn-secondary" onClick={() => setStep(1)}>이전</button>
-              <button className="btn btn-primary" onClick={handleSubmit}>{editItem ? '수정 완료' : '등록 완료'}</button>
-            </>
-          )}
+          <button className="btn btn-secondary" onClick={onClose}>취소</button>
+          <button className="btn btn-primary" onClick={handleSubmit}>{editItem ? '수정 완료' : '등록 완료'}</button>
         </div>
       </div>
     </div>

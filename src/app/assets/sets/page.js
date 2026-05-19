@@ -5,13 +5,14 @@ import { useApp } from '../../context/AppContext';
 export default function SetsManagementPage() {
   const { sets, setSets, items, CATEGORIES } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSetId, setEditingSetId] = useState(null);
   const [search, setSearch] = useState('');
   
   // Modal State
   const [formData, setFormData] = useState({ name: '', description: '', selectedItemIds: [] });
   const [itemSearch, setItemSearch] = useState('');
 
-  const filteredSets = sets.filter(s => s.name.includes(search) || s.description.includes(search));
+  const filteredSets = sets.filter(s => (s.name && s.name.includes(search)) || (s.description && s.description.includes(search)));
   
   const availableItemsToPick = items.filter(item => 
     !item.hidden && 
@@ -22,6 +23,14 @@ export default function SetsManagementPage() {
   const openNewModal = () => {
     setFormData({ name: '', description: '', selectedItemIds: [] });
     setItemSearch('');
+    setEditingSetId(null);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (set) => {
+    setFormData({ name: set.name || '', description: set.description || '', selectedItemIds: [...(set.items || [])] });
+    setItemSearch('');
+    setEditingSetId(set.id);
     setIsModalOpen(true);
   };
 
@@ -39,20 +48,29 @@ export default function SetsManagementPage() {
       return alert('세트에 포함될 아이템을 최소 1개 이상 선택해주세요.');
     }
     
-    const newSet = {
-      id: Date.now(),
-      name: formData.name,
-      description: formData.description,
-      items: formData.selectedItemIds
-    };
-    
-    setSets(prev => [...prev, newSet]);
+    if (editingSetId) {
+      setSets(prev => prev.map(s => s.id === editingSetId ? { ...s, name: formData.name, description: formData.description, items: formData.selectedItemIds } : s));
+    } else {
+      const newSet = {
+        id: Date.now(),
+        type: 'event',
+        name: formData.name,
+        description: formData.description,
+        items: formData.selectedItemIds,
+        photo: null,
+        externalItems: []
+      };
+      setSets(prev => [...prev, newSet]);
+    }
     setIsModalOpen(false);
+    setEditingSetId(null);
   };
 
   const handleDeleteSet = (id) => {
     if (confirm('정말로 이 세트를 삭제하시겠습니까? (장바구니나 기존 대여 내역에는 영향을 주지 않습니다)')) {
       setSets(prev => prev.filter(s => s.id !== id));
+      setIsModalOpen(false);
+      setEditingSetId(null);
     }
   };
 
@@ -87,13 +105,12 @@ export default function SetsManagementPage() {
               const setItems = set.items.map(id => items.find(i => i.id === id)).filter(Boolean);
               
               return (
-                <div key={set.id} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div key={set.id} onClick={() => openEditModal(set)} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'pointer', transition: 'box-shadow 0.2s', backgroundColor: '#fff' }} className="catalog-card-hover">
                   <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-main)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <h3 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 4px 0', color: 'var(--primary-dark)' }}>{set.name}</h3>
                       <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{set.description}</div>
                     </div>
-                    <button className="btn btn-secondary btn-sm" onClick={() => handleDeleteSet(set.id)} style={{ color: 'var(--danger)' }}>삭제</button>
                   </div>
                   
                   <div style={{ padding: '16px', flex: 1 }}>
@@ -126,7 +143,7 @@ export default function SetsManagementPage() {
         <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: '800px', height: '80vh', display: 'flex', flexDirection: 'column' }}>
             <div className="modal-header">
-              <h2 className="modal-title">새 세트 상품 구성하기</h2>
+              <h2 className="modal-title">{editingSetId ? '세트 구성 수정하기' : '새 세트 상품 구성하기'}</h2>
               <button className="modal-close" onClick={() => setIsModalOpen(false)}>×</button>
             </div>
             
@@ -186,11 +203,20 @@ export default function SetsManagementPage() {
               </div>
             </div>
             
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>취소</button>
-              <button className={`btn btn-primary ${(!formData.name || formData.selectedItemIds.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={handleSubmit} disabled={!formData.name || formData.selectedItemIds.length === 0}>
-                세트 등록 완료
-              </button>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                {editingSetId && (
+                  <button type="button" onClick={() => handleDeleteSet(editingSetId)} style={{ background: 'transparent', border: 'none', color: 'var(--danger)', fontSize: '12px', textDecoration: 'underline', cursor: 'pointer', padding: '4px 8px', opacity: 0.85 }}>
+                    세트 삭제
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>취소</button>
+                <button className={`btn btn-primary ${(!formData.name || formData.selectedItemIds.length === 0) ? 'opacity-50 cursor-not-allowed' : ''}`} onClick={handleSubmit} disabled={!formData.name || formData.selectedItemIds.length === 0}>
+                  {editingSetId ? '수정 완료' : '세트 등록 완료'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

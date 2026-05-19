@@ -1,6 +1,5 @@
 import { AppProvider } from './context/AppContext';
-import Sidebar from './components/Sidebar';
-import Header from './components/Header';
+import AppContent from './components/AppContent';
 import './globals.css';
 
 export const metadata = {
@@ -11,17 +10,11 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="ko">
-      <body>
+      <body suppressHydrationWarning>
         <AppProvider>
-          <div className="app-layout">
-            <Sidebar />
-            <main className="main-content">
-              <Header />
-              <div className="page-content">
-                {children}
-              </div>
-            </main>
-          </div>
+          <AppContent>
+            {children}
+          </AppContent>
         </AppProvider>
       </body>
     </html>

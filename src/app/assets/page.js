@@ -144,7 +144,13 @@ export default function AssetsPage() {
                       </td>
                       <td>
                         <div style={{ fontWeight: 700 }}>{item.name}</div>
-                        <div className="muted-line">{item.productionYear || '-'} 제작 · {item.keywords?.map(k => `#${k}`).join(' ')}</div>
+                        {((item.productionYear) || (item.keywords && item.keywords.length > 0)) ? (
+                          <div className="muted-line">
+                            {item.productionYear ? `${item.productionYear} 제작` : ''}
+                            {item.productionYear && item.keywords && item.keywords.length > 0 ? ' · ' : ''}
+                            {Array.isArray(item.keywords) ? item.keywords.map(k => `#${k}`).join(' ') : (item.keywords || '')}
+                          </div>
+                        ) : null}
                       </td>
                       <td>
                         <div className="code-stack">
