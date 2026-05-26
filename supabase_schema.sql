@@ -132,6 +132,9 @@ CREATE TABLE public.rentals (
     return_due_date DATE,
     status TEXT DEFAULT 'requested', -- requested, approved, renting, return-req, returned, rejected
     notes TEXT,
+    pickup_location TEXT, -- 물품 수령/보관 장소
+    return_submission JSONB, -- 반납 제출 정보 (반납 위치, 사진 URL, 메모 등)
+    return_checks JSONB, -- 반납 확인 정보 (세탁 여부, 수선 여부 등)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

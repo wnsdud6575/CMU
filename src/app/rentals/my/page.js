@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useRouter } from 'next/navigation';
+import { uploadItemPhoto } from '@/lib/supabaseClient';
 import { 
   ClipboardList, 
   Calendar, 
@@ -20,9 +21,18 @@ import {
 } from 'lucide-react';
 
 export default function MyRentalsPage() {
-  const { rentals, updateRentalStatus, currentUser } = useApp();
+  const { rentals, updateRentalStatus, updateRental, currentUser } = useApp();
   const router = useRouter();
   const [filter, setFilter] = useState('ALL');
+
+  // 반납 신청용 모달 상태
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
+  const [targetRental, setTargetRental] = useState(null);
+  const [returnLocation, setReturnLocation] = useState('');
+  const [returnMemo, setReturnMemo] = useState('');
+  const [returnPhotoUrl, setReturnPhotoUrl] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 일반 사용자 접근 통제
   useEffect(() => {
@@ -96,14 +106,63 @@ export default function MyRentalsPage() {
     }
   };
 
-  // 반납 요청 핸들러
-  const handleReturnRequest = async (id) => {
-    if (!confirm('반납을 신청하시겠습니까? 관리자 확인 후 반납 처리됩니다.')) return;
+  // 반납 모달 오픈 핸들러
+  const openReturnModal = (rental) => {
+    setTargetRental(rental);
+    setReturnLocation('');
+    setReturnMemo('');
+    setReturnPhotoUrl('');
+    setIsReturnModalOpen(true);
+  };
+
+  // 사진 업로드 핸들러
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setIsUploading(true);
     try {
-      await updateRentalStatus(id, 'return-req');
-      alert('반납 요청이 정상적으로 전송되었습니다.');
+      const url = await uploadItemPhoto(file);
+      if (url) {
+        setReturnPhotoUrl(url);
+      }
     } catch (err) {
-      alert('반납 요청 중 에러가 발생했습니다.');
+      alert('이미지 업로드에 실패했습니다: ' + err.message);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // 반납 신청 제출 핸들러
+  const handleSubmitReturn = async (e) => {
+    e.preventDefault();
+    if (!targetRental) return;
+    if (!returnLocation.trim()) {
+      alert('반납 장소를 입력해주세요.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const returnSubmission = {
+        location: returnLocation.trim(),
+        memo: returnMemo.trim(),
+        photoUrl: returnPhotoUrl || null,
+        submittedAt: new Date().toISOString()
+      };
+
+      await updateRental(targetRental.id, {
+        status: 'return-req',
+        returnSubmission
+      });
+
+      alert('반납 신청이 정상적으로 접수되었습니다. 관리자가 확인 후 최종 반납 완료 처리합니다.');
+      setIsReturnModalOpen(false);
+      setTargetRental(null);
+    } catch (err) {
+      alert('반납 신청 중 오류가 발생했습니다: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -300,13 +359,13 @@ export default function MyRentalsPage() {
                     )}
                     {rental.status === 'renting' && (
                       <button
-                        onClick={() => handleReturnRequest(rental.id)}
+                        onClick={() => openReturnModal(rental)}
                         style={{
                           background: 'var(--primary-50)',
                           border: '1px solid var(--primary-200)',
                           borderRadius: '6px',
                           color: 'var(--primary-dark)',
-                          padding: '4px 10px',
+                          padding: '4px 12px',
                           fontSize: '11px',
                           fontWeight: 700,
                           cursor: 'pointer',
@@ -319,7 +378,7 @@ export default function MyRentalsPage() {
                         onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--primary-50)' }}
                       >
                         <RotateCcw size={12} />
-                        반납 요청하기
+                        반납하기 (정보 등록) 🧺
                       </button>
                     )}
                   </div>
@@ -336,6 +395,12 @@ export default function MyRentalsPage() {
                     <div style={{ fontSize: '13px', fontWeight: 800, color: '#1e293b', lineHeight: 1.5, background: '#f8fafc', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                       {rental.items}
                     </div>
+                    {rental.pickupLocation && (
+                      <div style={{ marginTop: '12px', padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', fontSize: '12.5px', color: '#15803d', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 800 }}>📍 물건 수령 장소:</span>
+                        <strong style={{ textDecoration: 'underline' }}>{rental.pickupLocation}</strong>
+                      </div>
+                    )}
                   </div>
 
                   {/* 오른쪽: 일정 및 신청 목적 */}
@@ -399,12 +464,178 @@ export default function MyRentalsPage() {
                   </div>
 
                 </div>
+
+                {/* 📝 제출한 반납 정보 (Grid 밖 최하단 배치로 가시성 극대화) */}
+                {rental.returnSubmission && (
+                  <div style={{ marginTop: '16px', padding: '12px 16px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', fontSize: '11.5px', color: '#475569' }}>
+                    <div style={{ fontWeight: 700, color: 'var(--primary-dark)', marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>📝 제출한 반납 정보</span>
+                      <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                        제출일: {new Date(rental.returnSubmission.submittedAt).toLocaleDateString('ko-KR')}
+                      </span>
+                    </div>
+                    <div style={{ marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: 600 }}>반납 위치:</span>
+                      <strong>{rental.returnSubmission.location}</strong>
+                    </div>
+                    {rental.returnSubmission.memo && (
+                      <div style={{ marginBottom: '4px', marginTop: '4px' }}>
+                        <div style={{ fontWeight: 600, marginBottom: '2px' }}>반납 메모:</div>
+                        <div style={{ background: '#fff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '11px' }}>{rental.returnSubmission.memo}</div>
+                      </div>
+                    )}
+                    {rental.returnSubmission.photoUrl && (
+                      <div style={{ marginTop: '8px' }}>
+                        <div style={{ fontSize: '10.5px', fontWeight: 700, marginBottom: '4px' }}>📸 반납 사진 (클릭 시 확대)</div>
+                        <img 
+                          src={rental.returnSubmission.photoUrl} 
+                          alt="반납 증빙 사진" 
+                          style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid var(--border)', cursor: 'pointer' }}
+                          onClick={() => window.open(rental.returnSubmission.photoUrl, '_blank')}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
 
-    </div>
-  );
+    {/* 반납 신청 모달 */}
+    {isReturnModalOpen && targetRental && (
+      <div className="modal-overlay">
+        <div className="modal" style={{ maxWidth: '500px' }}>
+          <div className="modal-header">
+            <h2 className="modal-title">반납 신청</h2>
+            <button className="modal-close" onClick={() => setIsReturnModalOpen(false)}>x</button>
+          </div>
+          <form onSubmit={handleSubmitReturn}>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '12px' }}>
+                <div style={{ fontWeight: 700, marginBottom: '4px' }}>대여 품목 정보</div>
+                <div>{targetRental.items}</div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 700, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                  반납 장소 <span style={{ color: 'var(--danger)' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="예: 7층 로비 사물함 위, 지하 1층 의상창고"
+                  value={returnLocation}
+                  onChange={(e) => setReturnLocation(e.target.value)}
+                  required
+                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)' }}
+                />
+                <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', margin: 0 }}>
+                  실제 물품을 놓아둔 상세 위치를 입력해주세요.
+                </p>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 700, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                  반납 사진 첨부 (선택)
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    id="return-photo-upload"
+                    onChange={handlePhotoUpload}
+                    style={{ display: 'none' }}
+                    disabled={isUploading}
+                  />
+                  <label
+                    htmlFor="return-photo-upload"
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '8px 14px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-block',
+                      opacity: isUploading ? 0.6 : 1
+                    }}
+                  >
+                    {isUploading ? '업로드 중...' : '사진 선택/촬영 📸'}
+                  </label>
+                  {returnPhotoUrl && (
+                    <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 600 }}>
+                      ✓ 사진이 첨부되었습니다.
+                    </span>
+                  )}
+                </div>
+                {returnPhotoUrl && (
+                  <div style={{ marginTop: '10px', position: 'relative', width: '120px', height: '120px', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)' }}>
+                    <img
+                      src={returnPhotoUrl}
+                      alt="반납 사진 미리보기"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setReturnPhotoUrl('')}
+                      style={{
+                        position: 'absolute',
+                        top: '4px',
+                        right: '4px',
+                        background: 'rgba(0,0,0,0.6)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: '20px',
+                        height: '20px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '10px'
+                      }}
+                    >
+                      x
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 700, fontSize: '12px', display: 'block', marginBottom: '6px' }}>
+                  반납 메모 / 특이사항 (선택)
+                </label>
+                <textarea
+                  className="form-textarea"
+                  placeholder="오염, 손상, 수량이 모자라는 등의 특이사항이 있다면 작성해주세요."
+                  value={returnMemo}
+                  onChange={(e) => setReturnMemo(e.target.value)}
+                  style={{ width: '100%', height: '80px', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', resize: 'vertical' }}
+                ></textarea>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIsReturnModalOpen(false)}
+                disabled={isSubmitting}
+              >
+                닫기
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isUploading || isSubmitting}
+              >
+                {isSubmitting ? '신청 중...' : '반납 신청 완료'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+  </div>
+);
 }

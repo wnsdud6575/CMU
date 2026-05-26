@@ -59,6 +59,25 @@ export default function RentalApplyPage() {
   const returnDueDate = addDays(formData.eventDate || formData.pickupDate, formData.eventDate ? 7 : 14);
   const activeRentals = rentals.filter(r => ACTIVE_RENTAL_STATUSES.includes(r.status));
 
+  // 🧺 장바구니 품목별 동적 세탁 방법 리스트 추출
+  const getCartLaundryMethods = () => {
+    const methods = {};
+    cart.forEach(cartItem => {
+      // items에서 id 매칭
+      const matchedItem = items.find(i => i.id === cartItem.refId);
+      if (matchedItem && matchedItem.laundryMethod) {
+        const method = matchedItem.laundryMethod;
+        if (!methods[method]) {
+          methods[method] = [];
+        }
+        if (!methods[method].includes(matchedItem.name)) {
+          methods[method].push(matchedItem.name);
+        }
+      }
+    });
+    return methods;
+  };
+
   const getRentedQuantity = (itemId) =>
     activeRentals.reduce((sum, rental) =>
       sum + (rental.lines || []).reduce((lineSum, line) => {
@@ -226,6 +245,23 @@ export default function RentalApplyPage() {
     if (!formData.department || !formData.division || !formData.requester || !formData.contact || !formData.pickupDate || !formData.purpose) {
       return alert('신청 부서, 과, 신청자, 연락처, 사용 목적, 수령 예정일을 입력해주세요.');
     }
+
+    // 장바구니 품목 기준 동적 세탁 검증
+    const cartLaundryMethods = getCartLaundryMethods();
+    const needCold = Object.keys(cartLaundryMethods).some(m => m.includes('찬물') || m.includes('물세탁'));
+    const needSep = Object.keys(cartLaundryMethods).some(m => m.includes('단독') || m.includes('오염') || m.includes('부분'));
+    const needProf = Object.keys(cartLaundryMethods).some(m => m.includes('전문') || m.includes('드라이') || m.includes('의뢰'));
+
+    if (needCold && !formData.laundryColdWater) {
+      return alert('찬물 세탁 필수 동의 사항에 체크해 주세요.');
+    }
+    if (needSep && !formData.laundrySeparate) {
+      return alert('단독 세탁 필수 동의 사항에 체크해 주세요.');
+    }
+    if (needProf && !formData.laundryProfessional) {
+      return alert('전문 세탁소 의뢰 품목 확인 사항에 체크해 주세요.');
+    }
+
     setShowWarningModal(true);
   };
 
@@ -529,23 +565,58 @@ export default function RentalApplyPage() {
           </section>
 
           {/* 세탁 주의사항 */}
-          <section className="form-section" style={{ paddingBottom: 10, marginBottom: 10 }}>
-            <div className="section-title-row" style={{ marginBottom: 6 }}><h3 style={{ fontSize: 12 }}>세탁 관련 안내 (의상/천류)</h3></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label className="checkbox-row" style={{ fontSize: 11, cursor: 'pointer' }}>
-                <input type="checkbox" name="laundryColdWater" checked={formData.laundryColdWater} onChange={e => setFormData(prev => ({...prev, laundryColdWater: e.target.checked}))} />
-                <span>찬물 세탁 필수 동의</span>
-              </label>
-              <label className="checkbox-row" style={{ fontSize: 11, cursor: 'pointer' }}>
-                <input type="checkbox" name="laundrySeparate" checked={formData.laundrySeparate} onChange={e => setFormData(prev => ({...prev, laundrySeparate: e.target.checked}))} />
-                <span>단독 세탁 필수 동의 (이염 주의)</span>
-              </label>
-              <label className="checkbox-row" style={{ fontSize: 11, cursor: 'pointer' }}>
-                <input type="checkbox" name="laundryProfessional" checked={formData.laundryProfessional} onChange={e => setFormData(prev => ({...prev, laundryProfessional: e.target.checked}))} />
-                <span>전문 세탁소 의뢰 (드라이클리닝) 품목 확인</span>
-              </label>
-            </div>
-          </section>
+          {(() => {
+            const cartLaundryMethods = getCartLaundryMethods();
+            const needCold = Object.keys(cartLaundryMethods).some(m => m.includes('찬물') || m.includes('물세탁'));
+            const needSep = Object.keys(cartLaundryMethods).some(m => m.includes('단독') || m.includes('오염') || m.includes('부분'));
+            const needProf = Object.keys(cartLaundryMethods).some(m => m.includes('전문') || m.includes('드라이') || m.includes('의뢰'));
+            const hasAnyLaundry = needCold || needSep || needProf;
+
+            return (
+              <section className="form-section" style={{ paddingBottom: 10, marginBottom: 10 }}>
+                <div className="section-title-row" style={{ marginBottom: 6 }}><h3 style={{ fontSize: 12 }}>세탁 관련 안내 (의상/천류)</h3></div>
+                
+                {hasAnyLaundry ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {/* 동적 세탁 수칙 고지 안내 */}
+                    <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '11px', color: '#475569', marginBottom: '4px' }}>
+                      <div style={{ fontWeight: 700, color: 'var(--primary-dark)', marginBottom: '4px' }}>대여 품목별 지정 세탁 방법</div>
+                      <ul style={{ margin: 0, paddingLeft: '14px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {Object.entries(cartLaundryMethods).map(([method, itemNames]) => (
+                          <li key={method}>
+                            <strong>{method}</strong>: {itemNames.join(', ')}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {needCold && (
+                      <label className="checkbox-row" style={{ fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input type="checkbox" name="laundryColdWater" checked={formData.laundryColdWater} onChange={e => setFormData(prev => ({...prev, laundryColdWater: e.target.checked}))} />
+                        <span style={{ fontWeight: formData.laundryColdWater ? 700 : 500 }}>찬물 세탁 필수 동의 <span style={{ color: 'var(--danger)' }}>*</span></span>
+                      </label>
+                    )}
+                    {needSep && (
+                      <label className="checkbox-row" style={{ fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input type="checkbox" name="laundrySeparate" checked={formData.laundrySeparate} onChange={e => setFormData(prev => ({...prev, laundrySeparate: e.target.checked}))} />
+                        <span style={{ fontWeight: formData.laundrySeparate ? 700 : 500 }}>단독 세탁 필수 동의 (이염 주의) <span style={{ color: 'var(--danger)' }}>*</span></span>
+                      </label>
+                    )}
+                    {needProf && (
+                      <label className="checkbox-row" style={{ fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input type="checkbox" name="laundryProfessional" checked={formData.laundryProfessional} onChange={e => setFormData(prev => ({...prev, laundryProfessional: e.target.checked}))} />
+                        <span style={{ fontWeight: formData.laundryProfessional ? 700 : 500 }}>전문 세탁소 의뢰 (드라이클리닝) 품목 확인 <span style={{ color: 'var(--danger)' }}>*</span></span>
+                      </label>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--bg-main)', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-light)', textAlign: 'center' }}>
+                    장바구니에 세탁 필수 지정 품목(의상/천류)이 없습니다.
+                  </div>
+                )}
+              </section>
+            );
+          })()}
 
           {/* 비고 */}
           <div className="form-group" style={{ marginBottom: 0 }}>
@@ -587,6 +658,27 @@ export default function RentalApplyPage() {
                 <li>품목별 세탁 방법을 확인하고, 지정 세탁 방법에 맞춰 반납해 주세요.</li>
                 <li>승인된 반납 기한을 초과할 경우 담당자에게 알림이 표시됩니다.</li>
               </ul>
+
+              {/* ⚠️ 동적 세탁 가이드 경고 배너 */}
+              {(() => {
+                const cartLaundryMethods = getCartLaundryMethods();
+                if (Object.keys(cartLaundryMethods).length === 0) return null;
+                const hasLaundryChecks = formData.laundryColdWater || formData.laundrySeparate || formData.laundryProfessional;
+                if (!hasLaundryChecks) return null;
+                
+                return (
+                  <div style={{ marginTop: '16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '12px 14px', fontSize: '12px', color: '#b45309', marginBottom: '16px' }}>
+                    <div style={{ fontWeight: 800, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      ⚠️ 이번 대여 품목의 필수 세탁 수칙 안내
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '4px', lineHeight: '1.5' }}>
+                      {formData.laundryColdWater && <li><strong>찬물 세탁 필수</strong>: 세탁 시 미온수나 뜨거운 물을 사용할 경우 수축되거나 손상될 수 있습니다.</li>}
+                      {formData.laundrySeparate && <li><strong>단독 세탁 필수</strong>: 타 의상과 함께 세탁 시 이염될 수 있으므로 반드시 단독 세탁해 주십시오.</li>}
+                      {formData.laundryProfessional && <li><strong>전문 세탁소 의뢰</strong>: 드라이클리닝 등 전문적인 세탁이 요구되는 품목이 포함되어 있습니다. 임의 물세탁을 금합니다.</li>}
+                    </ul>
+                  </div>
+                );
+              })()}
 
               <label className="checkbox-row confirmation">
                 <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />

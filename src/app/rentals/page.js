@@ -71,6 +71,7 @@ function getKanbanDdayStyles(diff) {
 export default function RentalsKanban() {
   const { rentals, updateRentalStatus, updateRental } = useApp();
   const [selectedRental, setSelectedRental] = useState(null);
+  const [pickupLocationInput, setPickupLocationInput] = useState('');
   const [returnData, setReturnData] = useState(null);
   const [draggedItem, setDraggedItem] = useState(null);
 
@@ -103,6 +104,23 @@ export default function RentalsKanban() {
   const handleDrop = (e, targetStatus) => {
     e.preventDefault();
     if (draggedItem) {
+      // ⚠️ 반납 완료(returned) 상태로의 드래그는 세탁/수선 검수 데이터 누락 방지를 위해 제한
+      if (targetStatus === 'returned') {
+        alert("반납 완료 처리는 필수 세탁/수선 검수를 위해 카드를 클릭한 뒤 '반납 확인 및 완료' 버튼을 통해서 처리해 주세요.");
+        setDraggedItem(null);
+        return;
+      }
+
+      // 💡 승낙(approved) 또는 대여시작(renting) 상태로 드래그 시 prompt 대신 상세 모달 자동 활성화
+      if (targetStatus === 'approved' || targetStatus === 'renting') {
+        const rental = rentals.find(r => r.id === draggedItem);
+        if (rental) {
+          openRental(rental);
+        }
+        setDraggedItem(null);
+        return;
+      }
+
       updateRentalStatus(draggedItem, targetStatus);
       setDraggedItem(null);
     }
@@ -111,6 +129,7 @@ export default function RentalsKanban() {
   const openRental = (rental) => {
     setSelectedRental(rental);
     setReturnData(createInitialReturnData(rental));
+    setPickupLocationInput(rental.pickupLocation || '');
   };
 
   const handleReturnDataChange = (e) => {
@@ -289,10 +308,91 @@ export default function RentalsKanban() {
                 </div>
               </div>
 
+              {(selectedRental.status === 'requested' || selectedRental.status === 'approved') && (
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label className="form-label" style={{ fontWeight: 700, fontSize: '12.5px', display: 'block', marginBottom: '6px', color: !pickupLocationInput.trim() ? '#e11d48' : 'var(--text)' }}>
+                    물품 수령/보관 장소 <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="대여자가 물품을 수령할 구체적인 장소를 입력해주세요 (필수)"
+                    value={pickupLocationInput}
+                    onChange={(e) => setPickupLocationInput(e.target.value)}
+                    autoFocus
+                    style={{ 
+                      width: '100%', 
+                      padding: '10px 12px', 
+                      borderRadius: '6px', 
+                      border: !pickupLocationInput.trim() ? '1.5px solid #fecaca' : '1px solid var(--border)',
+                      backgroundColor: !pickupLocationInput.trim() ? '#fef2f2' : '#fff',
+                      transition: 'all 0.15s ease',
+                      outline: 'none'
+                    }}
+                  />
+                  {!pickupLocationInput.trim() ? (
+                    <p style={{ fontSize: '11px', color: '#e11d48', marginTop: '6px', fontWeight: 600, margin: 0 }}>
+                      ⚠️ 수령 장소가 입력되지 않았습니다. 장소를 적어야 승낙 및 대여 시작이 가능합니다.
+                    </p>
+                  ) : (
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', margin: 0 }}>
+                      대여 대기/승낙 건 출고 시 장소를 필수로 기록해야 대여 시작이 가능합니다.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!['requested', 'approved'].includes(selectedRental.status) && selectedRental.pickupLocation && (
+                <div className="detail-section" style={{ marginBottom: '20px' }}>
+                  <div className="detail-section-title">물품 수령/보관 장소</div>
+                  <div style={{ background: '#f0fdf4', padding: '12px 16px', borderRadius: '8px', border: '1px solid #bbf7d0', color: '#15803d', fontSize: '12.5px', fontWeight: 'bold' }}>
+                    📍 {selectedRental.pickupLocation}
+                  </div>
+                </div>
+              )}
+
               <div className="detail-section">
                 <div className="detail-section-title">비고/메모</div>
                 <div className="memo-box">{selectedRental.notes || '메모 없음'}</div>
               </div>
+
+              {selectedRental.returnSubmission && (
+                <div className="return-check-panel" style={{ background: '#f8fafc', border: '1px solid #e2e8f0', marginBottom: '20px', padding: '16px', borderRadius: '8px' }}>
+                  <div className="detail-section-title" style={{ color: '#475569', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <span>사용자 반납 정보</span>
+                    <span style={{ fontSize: '11px', fontWeight: 'normal', color: 'var(--text-muted)' }}>
+                      제출일: {new Date(selectedRental.returnSubmission.submittedAt).toLocaleString('ko-KR')}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed #e2e8f0', paddingBottom: '8px' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>반납 위치</span>
+                      <strong style={{ color: 'var(--text)' }}>{selectedRental.returnSubmission.location}</strong>
+                    </div>
+                    {selectedRental.returnSubmission.memo && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderBottom: '1px dashed #e2e8f0', paddingBottom: '8px' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>반납 특이사항</span>
+                        <div style={{ background: '#fff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '12px', color: 'var(--text)' }}>
+                          {selectedRental.returnSubmission.memo}
+                        </div>
+                      </div>
+                    )}
+                    {selectedRental.returnSubmission.photoUrl && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>증빙 사진 (클릭 시 원본보기)</span>
+                        <div style={{ width: '100%', maxHeight: '200px', borderRadius: '6px', overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f1f5f9' }}>
+                          <img
+                            src={selectedRental.returnSubmission.photoUrl}
+                            alt="반납 증빙 사진"
+                            style={{ width: '100%', height: '200px', objectFit: 'contain', cursor: 'pointer' }}
+                            onClick={() => window.open(selectedRental.returnSubmission.photoUrl, '_blank')}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {selectedRental.status === 'return-req' && returnData && (
                 <div className="return-check-panel">
@@ -344,10 +444,24 @@ export default function RentalsKanban() {
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setSelectedRental(null)}>닫기</button>
               {selectedRental.status === 'requested' && (
-                <button className="btn btn-primary" onClick={() => { updateRentalStatus(selectedRental.id, 'approved'); setSelectedRental(null); }}>승낙 처리</button>
+                <button className="btn btn-primary" onClick={() => {
+                  if (!pickupLocationInput.trim()) {
+                    alert('물품 수령/보관 장소를 입력해주세요.');
+                    return;
+                  }
+                  updateRental(selectedRental.id, { status: 'approved', pickupLocation: pickupLocationInput.trim() });
+                  setSelectedRental(null);
+                }}>승낙 처리</button>
               )}
               {selectedRental.status === 'approved' && (
-                <button className="btn btn-primary" onClick={() => { updateRentalStatus(selectedRental.id, 'renting'); setSelectedRental(null); }}>대여 시작</button>
+                <button className="btn btn-primary" onClick={() => {
+                  if (!pickupLocationInput.trim()) {
+                    alert('물품 수령/보관 장소를 입력해주세요.');
+                    return;
+                  }
+                  updateRental(selectedRental.id, { status: 'renting', pickupLocation: pickupLocationInput.trim() });
+                  setSelectedRental(null);
+                }}>대여 시작</button>
               )}
               {selectedRental.status === 'return-req' && (
                 <button className="btn btn-primary" onClick={completeReturn}>반납 확인 및 완료</button>

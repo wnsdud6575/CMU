@@ -466,21 +466,39 @@ export function AppProvider({ children }) {
         try {
           const { data: dbRentals, error: rentalsErr } = await supabase.from('rentals').select('*');
           if (!rentalsErr && dbRentals && dbRentals.length > 0) {
-            const formattedRentals = dbRentals.map(r => ({
-              id: r.id,
-              department: r.department,
-              requester: r.requester,
-              contact: r.contact,
-              purpose: r.purpose,
-              items: r.items_summary,
-              lines: r.lines || [],
-              pickupDate: r.pickup_date,
-              eventDate: r.event_date,
-              returnDueDate: r.return_due_date,
-              status: r.status,
-              notes: r.notes || '',
-              overdue: new Date(r.return_due_date) < new Date() && !['returned', 'rejected'].includes(r.status)
-            }));
+            const todayStr = new Date().toLocaleDateString('sv-SE');
+
+            const formattedRentals = dbRentals.map(r => {
+              let status = r.status;
+
+              // 💡 자동 대여중 전환 로직 (수령 예정일 도래 시 approved -> renting 자동 전환 + 수령 장소 기입 필수)
+              if (status === 'approved' && r.pickup_date && r.pickup_date <= todayStr && r.pickup_location) {
+                status = 'renting';
+                supabase.from('rentals').update({ status: 'renting' }).eq('id', r.id).then(({ error }) => {
+                  if (error) console.error(`[자동 대여 전환 실패] ID: ${r.id}, error:`, error);
+                  else console.log(`[자동 대여 전환 성공] ID: ${r.id} 가 'renting' 상태로 자동 업데이트되었습니다.`);
+                });
+              }
+
+              return {
+                id: r.id,
+                department: r.department,
+                requester: r.requester,
+                contact: r.contact,
+                purpose: r.purpose,
+                items: r.items_summary,
+                lines: r.lines || [],
+                pickupDate: r.pickup_date,
+                eventDate: r.event_date,
+                returnDueDate: r.return_due_date,
+                status: status,
+                notes: r.notes || '',
+                pickupLocation: r.pickup_location || '',
+                returnSubmission: r.return_submission || null,
+                returnChecks: r.return_checks || null,
+                overdue: new Date(r.return_due_date) < new Date() && !['returned', 'rejected'].includes(status)
+              };
+            });
             setRentals(formattedRentals);
           }
         } catch (rErr) {
@@ -626,7 +644,9 @@ export function AppProvider({ children }) {
         if (updates.pickupDate !== undefined) dbUpdates.pickup_date = updates.pickupDate;
         if (updates.eventDate !== undefined) dbUpdates.event_date = updates.eventDate;
         if (updates.returnDueDate !== undefined) dbUpdates.return_due_date = updates.returnDueDate;
+        if (updates.returnSubmission !== undefined) dbUpdates.return_submission = updates.returnSubmission;
         if (updates.returnChecks !== undefined) dbUpdates.return_checks = updates.returnChecks;
+        if (updates.pickupLocation !== undefined) dbUpdates.pickup_location = updates.pickupLocation;
         
         if (Object.keys(dbUpdates).length > 0) {
           const { error } = await supabase.from('rentals').update(dbUpdates).eq('id', id);
@@ -651,7 +671,8 @@ export function AppProvider({ children }) {
         event_date: rental.eventDate,
         return_due_date: rental.returnDueDate,
         status: rental.status || 'requested',
-        notes: rental.notes || ''
+        notes: rental.notes || '',
+        pickup_location: rental.pickupLocation || ''
       };
       
       const { data, error } = await supabase.from('rentals').insert([dbInsert]).select();
@@ -671,6 +692,9 @@ export function AppProvider({ children }) {
           returnDueDate: data[0].return_due_date,
           status: data[0].status,
           notes: data[0].notes,
+          returnSubmission: data[0].return_submission || null,
+          returnChecks: data[0].return_checks || null,
+          pickupLocation: data[0].pickup_location || '',
           overdue: false
         };
         setRentals(prev => [dbItem, ...prev]);
