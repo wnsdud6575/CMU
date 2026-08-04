@@ -22,7 +22,8 @@ export default function AssetModal({ onClose, editItem = null }) {
   const [activePasteIndex, setActivePasteIndex] = useState(null);
   const [uploadingIdx, setUploadingIdx] = useState(null);
 
-  const [formData, setFormData] = useState(editItem || {
+  // Keep edit forms safe when optional DB fields are absent.
+  const [formData, setFormData] = useState(() => ({
     name: '',
     category: 'A',
     costumeLine: '무용복',
@@ -44,8 +45,15 @@ export default function AssetModal({ onClose, editItem = null }) {
     qrCode: '',
     photo: null,
     photoTone: 'linear-gradient(135deg, #e0f2fe, #ccfbf1)',
-    sizes: editItem?.sizes || [], // Structured sizes
-  });
+    sizes: [], // Structured sizes
+    ...(editItem || {}),
+    name: editItem?.name || '',
+    photo: typeof editItem?.photo === 'string' ? editItem.photo : null,
+    keywords: Array.isArray(editItem?.keywords) || typeof editItem?.keywords === 'string'
+      ? editItem.keywords
+      : '',
+    sizes: Array.isArray(editItem?.sizes) ? editItem.sizes : [],
+  }));
 
   const updateSizeData = (newSizes, category) => {
     const totalQty = newSizes.reduce((sum, s) => sum + (parseInt(s.qty, 10) || 0), 0);
