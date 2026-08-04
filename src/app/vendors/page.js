@@ -1,55 +1,6 @@
 'use client';
 
-const VENDORS = [
-  {
-    id: 1,
-    name: '크린토피아 연수점',
-    category: '세탁소',
-    contact: '02-123-4567',
-    manager: '김사장',
-    status: 'active',
-    taxInvoice: '가능',
-    specialties: '무용복, 실크, 드라이클리닝',
-    productionLinks: '-',
-    notes: '대량 세탁 시 10% 할인. 세탁 완료 후 사진 확인 가능.',
-  },
-  {
-    id: 2,
-    name: '동대문 종합상가 동양직물',
-    category: '원단/부자재',
-    contact: '02-987-6543',
-    manager: '이실장',
-    status: 'active',
-    taxInvoice: '가능',
-    specialties: '국악 원단, 무용복 원단, 금박 부자재',
-    productionLinks: '스와치 24-S-018 / 1벌 2.2마 / 50벌 115야드 주문',
-    notes: '염색 탕 차이 주의. 같은 프로젝트 추가 제작 시 기존 스와치 번호 확인 필요.',
-  },
-  {
-    id: 3,
-    name: '스타일 메이크업 샵',
-    category: '외부 분장',
-    contact: '010-1234-5678',
-    manager: '박원장',
-    status: 'inactive',
-    taxInvoice: '가능',
-    specialties: '대형 행사 외부 분장팀',
-    productionLinks: '-',
-    notes: '총회 등 외부 인력 필요 시 협의. 현재는 휴면 거래처.',
-  },
-  {
-    id: 4,
-    name: '제일 소품',
-    category: '소품 구매',
-    contact: '02-555-7777',
-    manager: '-',
-    status: 'active',
-    taxInvoice: '확인 필요',
-    specialties: '기타 잡화, 특수 소품',
-    productionLinks: '북 의상 장식 부자재 후보',
-    notes: '온라인 주문 위주. 납기와 재고 변동이 잦아 주문 전 확인 필요.',
-  },
-];
+const VENDORS = [];
 
 export default function VendorsPage() {
   return (

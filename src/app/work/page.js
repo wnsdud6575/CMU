@@ -5,19 +5,13 @@ import Link from 'next/link';
 import * as XLSX from 'xlsx';
 import {
   CalendarCheck, ListTodo, TrendingUp, AlertTriangle,
-  Plus, Clock, ArrowLeftRight, Sparkles, Shirt, Users,
+  Plus, Clock, ArrowLeftRight, Shirt, Users,
   Target, FolderKanban, Columns3, RefreshCw,
 } from 'lucide-react';
 
 const CATEGORY_LABELS = { meeting: '회의', support: '지원', education: '교육', production: '제작', event: '행사' };
 
-const INITIAL_LOGS = [
-  { id: 't1', category: 'meeting', title: '임원 프로필 촬영 관련 회의', team: '분장팀', requester: '김철수', date: '2026-04-29', location: '1층 회의실', attendees: 5, content: '임원 프로필 촬영 일정 및 지원 사항 논의' },
-  { id: 't2', category: 'education', title: '유년부 율동팀 무용복 코칭', team: '운영팀', requester: '이영희', date: '2026-04-30', location: '본당', attendees: 15, content: '유년부 율동팀 무용복 착용법 및 관리법 사전 교육' },
-  { id: 't3', category: 'support', title: '봄 시즌 무용복 재고 실사', team: '운영팀', requester: '관리자', date: '2026-04-29', location: '연수원 5층', attendees: 2, content: '무용복 수량 파악 및 검수 작업' },
-  { id: 't4', category: 'production', title: '승리컵 축구복 세트 구성', team: '디자인팀', requester: '관리자', date: '2026-05-02', location: '사무실', attendees: 1, content: '행사 전 축구복 사이즈별 수량, 세트 구성 정리' },
-  { id: 't5', category: 'event', title: '청년부 뮤지컬 무대 분장 지원', team: '분장팀', requester: '박민수', date: '2026-04-26', location: '대강당', attendees: 20, content: '청년부 주관 창작 뮤지컬 무대 분장 지원' },
-];
+const INITIAL_LOGS = [];
 
 // 💡 월간 달력 내부 일정 블록의 가독성을 높이기 위한 카테고리별 전용 파스텔 테마 스타일 정의
 function getCategoryCalendarStyle(category) {
@@ -37,11 +31,7 @@ function getCategoryCalendarStyle(category) {
   }
 }
 
-const PROJECTS = [
-  { name: '승리컵 축구복', status: '구성 정리', progress: 35, due: '05-02' },
-  { name: '북 의상 정리', status: '사진 촬영 필요', progress: 20, due: '05-08' },
-  { name: '상반기 교육 지원', status: '사전 과제 수집', progress: 60, due: '04-30' },
-];
+const PROJECTS = [];
 
 function getCategoryBadge(cat) { 
   return cat === 'meeting' ? 'warning' : cat === 'support' ? 'info' : cat === 'education' ? 'primary' : cat === 'production' ? 'success' : 'danger'; 
@@ -720,30 +710,6 @@ export default function DashboardPage() {
                   </Link>
                 );
               })}
-            </div>
-          </div>
-          <div className="card dash-card">
-            <div className="dash-card-header">
-              <h3 style={{ display: 'flex', alignItems: 'center' }}>
-                <Sparkles size={14} color="var(--primary-dark)" style={{ marginRight: 6 }} /> 부서 요청
-              </h3>
-              <Link href="/requests/costume" style={{ fontSize: 11, color: 'var(--primary-dark)', fontWeight: 700, textDecoration: 'none' }}>전체 →</Link>
-            </div>
-            <div className="dash-card-body">
-              <div style={{ padding: '8px 0', borderBottom: '1px solid var(--border-light)', fontSize: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                  <span style={{ fontWeight: 600 }}>의전팀 분장 (임원)</span>
-                  <span className="badge badge-warning" style={{ fontSize: 9, padding: '2px 5px' }}>회의</span>
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>04.25 · 스튜디오 · 3명</div>
-              </div>
-              <div style={{ padding: '8px 0', fontSize: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                  <span style={{ fontWeight: 600 }}>유년부 무용복 코칭</span>
-                  <span className="badge badge-primary" style={{ fontSize: 9, padding: '2px 5px' }}>진행</span>
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>04.28 · 본당 · 15명</div>
-              </div>
             </div>
           </div>
         </div>
